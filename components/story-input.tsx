@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { ASPECT_RATIOS, type VisualStyle, type AspectRatio } from "@/lib/types"
+import { type VisualStyle } from "@/lib/types"
 import { Upload, Plus, Trash, Wand2, AlertTriangle } from "lucide-react"
 
 interface StoryInputProps {
@@ -67,7 +67,6 @@ export default function StoryInput({ onComplete }: StoryInputProps) {
     "Analyzing story...",
     "Processing with AI...",
     "Extracting scene structure...",
-    "Generating AI prompts...",
     "Creating visual images...",
     "Assembling storyboard...",
   ]
@@ -82,7 +81,13 @@ export default function StoryInput({ onComplete }: StoryInputProps) {
 
     try {
       // Generate the storyboard
-      const storyboard = await generateStoryboard(storyInput, styleSettings, useGeminiPro, (step, progress) => {
+      const storyboard = await generateStoryboard(
+        storyInput,
+        {...styleSettings,
+        visualStyle:undefined,
+        aspectRatio: undefined,
+        quality: undefined},
+        useGeminiPro, (step, progress) => {
         setCurrentStep(step)
         setGenerationProgress(progress)
       })
@@ -300,81 +305,6 @@ export default function StoryInput({ onComplete }: StoryInputProps) {
         </Tabs>
       </div>
 
-      {/* Right panel - Style settings */}
-      <div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Visual Style Settings</CardTitle>
-            <CardDescription>Choose the visual style and technical settings for your storyboard.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RadioGroup
-              value={styleSettings.visualStyle}
-              onValueChange={(value) => updateStyleSetting("visualStyle", value as VisualStyle)}
-              className="space-y-4"
-            >
-              {visualStyles.map((style) => (
-                <div key={style.id} className="flex items-start space-x-2">
-                  <RadioGroupItem value={style.id} id={style.id} className="mt-1" />
-                  <div className="grid gap-1.5">
-                    <Label htmlFor={style.id} className="font-medium">
-                      {style.name}
-                    </Label>
-                    <p className="text-sm text-muted-foreground">{style.description}</p>
-                  </div>
-                </div>
-              ))}
-            </RadioGroup>
-
-            <div className="mt-6 space-y-4">
-              <h3 className="font-medium mb-2">Technical Settings</h3>
-
-              <div className="space-y-2">
-                <Label htmlFor="aspect-ratio">Aspect Ratio</Label>
-                <Select
-                  value={styleSettings.aspectRatio}
-                  onValueChange={(value) => updateStyleSetting("aspectRatio", value as AspectRatio)}
-                >
-                  <SelectTrigger id="aspect-ratio">
-                    <SelectValue placeholder="Select aspect ratio" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ASPECT_RATIOS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="image-quality">Image Quality</Label>
-                <Select
-                  value={styleSettings.quality}
-                  onValueChange={(value: "standard" | "high" | "draft") => updateStyleSetting("quality", value)}
-                >
-                  <SelectTrigger id="image-quality">
-                    <SelectValue placeholder="Select image quality" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="high">High Quality (Longer processing)</SelectItem>
-                    <SelectItem value="draft">Draft (Faster processing)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button className="w-full" onClick={handleGenerateStoryboard} disabled={isGenerating || !storyInput.trim()}>
-              <Wand2 className="mr-2 h-4 w-4" />
-              Generate Storyboard
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-
       {/* Loading overlay */}
       {isGenerating && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -382,6 +312,13 @@ export default function StoryInput({ onComplete }: StoryInputProps) {
             <h3 className="text-xl font-bold mb-4">Generating Storyboard...</h3>
             <Progress value={generationProgress} className="mb-4" />
             <p className="text-gray-700">{steps[currentStep]}</p>
+              <CardFooter>
+                <Button className="w-full" onClick={handleGenerateStoryboard} disabled={isGenerating || !storyInput.trim()}>
+                    <Wand2 className="mr-2 h-4 w-4" />
+                    Generate Story
+                </Button>
+              </CardFooter>
+
           </div>
         </div>
       )}
