@@ -1,0 +1,4 @@
+{
+  // Instruct Vercel to run a custom install command
+  "installCommand": "pnpm install --no-frozen-lockfile"
+}
