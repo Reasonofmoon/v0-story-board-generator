@@ -78,6 +78,9 @@ type StoryboardContextType = {
   deleteVersion: (versionIndex: number) => void
 
   // Regeneration
+  regenerateStoryboard: (options?: { keepScenes?: boolean }) => Promise<void>
+  regenerateShot: (sceneId: string, shotId: string) => Promise<void>
+
   // Template style management
   savedTemplateStyles: TemplateStyle[]
   updateTemplateStyle: (templateStyle: TemplateStyle) => void
@@ -91,7 +94,6 @@ type StoryboardContextType = {
   deleteAnnotation: (annotationId: string) => void
   clearAnnotations: (sceneId?: string, shotId?: string) => void
 }
-
 
 const defaultStyleSettings: StyleSettings = {
   visualStyle: "cinematic",
@@ -108,6 +110,7 @@ const defaultExportOptions: ExportOptions = {
   includeMetadata: true,
   highResolution: true,
   includeText: true,
+  organizeByScenesInFolders: true,
 }
 
 const StoryboardContext = createContext<StoryboardContextType | undefined>(undefined)
@@ -117,6 +120,7 @@ export function StoryboardProvider({ children }: { children: ReactNode }) {
   const [storyInput, setStoryInput] = useState("")
 
   // Storyboard data
+  const [storyboardData, setStoryboardDataInternal] = useState<StoryboardData | null>(null)
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false)
@@ -147,7 +151,6 @@ export function StoryboardProvider({ children }: { children: ReactNode }) {
   const [savedTemplateStyles, setSavedTemplateStyles] = useState<TemplateStyle[]>([])
 
   // Custom setStoryboardData function that ensures annotations are initialized
-  const [storyboardData, setStoryboardDataInternal] = useState<StoryboardData | null>(null);
   const setStoryboardData = (data: StoryboardData | null) => {
     if (data) {
       // Ensure annotations array is initialized
@@ -155,8 +158,8 @@ export function StoryboardProvider({ children }: { children: ReactNode }) {
         data.annotations = []
       }
     }
-    setStoryboardDataInternal(data);
-  };
+    setStoryboardDataInternal(data)
+  }
 
   // Update a specific style setting
   const updateStyleSetting = <K extends keyof StyleSettings>(key: K, value: StyleSettings[K]) => {
@@ -614,7 +617,48 @@ export function StoryboardProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Regenerate a specific shot
+  const regenerateShot = async (sceneId: string, shotId: string) => {
+    if (!storyboardData) return
 
+    const scene = storyboardData.scenes.find((s) => s.id === sceneId)
+    if (!scene) return
+
+    const shot = scene.shots.find((s) => s.id === shotId)
+    if (!shot) return
+
+    try {
+      // Import dynamically to avoid circular dependencies
+      const { AIPromptEngine } = await import("@/lib/ai-prompt-engine")
+      const { FalImageService } = await import("@/lib/fal-image-service")
+
+      const promptEngine = new AIPromptEngine()
+      const imageService = new FalImageService()
+
+      // Generate a new prompt
+      const prompt = promptEngine.generatePrompt(shot, styleSettings, "fal")
+
+      // Generate a new image
+      const imageUrl = await imageService.generateImage({
+        prompt,
+        negativePrompt: promptEngine.generateNegativePrompt(styleSettings),
+        width: getWidthForAspectRatio(styleSettings.aspectRatio),
+        height: getHeightForAspectRatio(styleSettings.aspectRatio),
+        steps: getStepsForQuality(styleSettings.quality),
+      })
+
+      // Update the shot
+      updateShot(sceneId, shotId, {
+        prompt,
+        imageUrl,
+      })
+
+      return { prompt, imageUrl }
+    } catch (error) {
+      console.error("Error regenerating shot:", error)
+      throw error
+    }
+  }
 
   // Template style management
   // Update template style
@@ -727,6 +771,41 @@ export function StoryboardProvider({ children }: { children: ReactNode }) {
     setProjectSaved(false)
   }
 
+  // Helper functions for image generation
+  function getWidthForAspectRatio(aspectRatio: string): number {
+    switch (aspectRatio) {
+      case "16:9":
+        return 1024
+      case "4:3":
+        return 1024
+      case "1:1":
+        return 1024
+      case "2.35:1":
+        return 1024
+      case "9:16":
+        return 576
+      default:
+        return 1024
+    }
+  }
+
+  function getHeightForAspectRatio(aspectRatio: string): number {
+    switch (aspectRatio) {
+      case "16:9":
+        return 576
+      case "4:3":
+        return 768
+      case "1:1":
+        return 1024
+      case "2.35:1":
+        return 436
+      case "9:16":
+        return 1024
+      default:
+        return 768
+    }
+  }
+
   function getStepsForQuality(quality: string): number {
     switch (quality) {
       case "high":
@@ -767,7 +846,7 @@ export function StoryboardProvider({ children }: { children: ReactNode }) {
     }))
   }, [characters])
 
-  return(
+  return (
     <StoryboardContext.Provider
       value={{
         storyInput,
@@ -814,6 +893,7 @@ export function StoryboardProvider({ children }: { children: ReactNode }) {
         loadVersion,
         deleteVersion,
         regenerateStoryboard,
+        regenerateShot,
         savedTemplateStyles,
         updateTemplateStyle,
         saveTemplateStyle,

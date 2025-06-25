@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from "uuid"
 import { AIPromptEngine } from "./ai-prompt-engine"
 import { GeminiProService } from "./gemini-pro-service"
+import { FalImageService } from "./fal-image-service"
 import type { StoryboardData, SceneInfo, ShotInfo, StyleSettings } from "./types"
 
-/*
+/**
  * Storyboard Generator
  * Generates a complete storyboard based on story text and style settings
  */
@@ -16,6 +17,7 @@ export async function generateStoryboard(
   // Create services
   const promptEngine = new AIPromptEngine()
   const geminiService = new GeminiProService()
+  const imageService = new FalImageService()
 
   // Update progress
   const updateProgress = (step: number, progress: number) => {
@@ -35,7 +37,7 @@ export async function generateStoryboard(
     updateProgress(1, 100)
   } else {
     // Use basic analysis
-    const basicAnalysis = await analyzeStoryBasic(storyText) 
+    const basicAnalysis = await analyzeStoryBasic(storyText)
     storyStructure = basicAnalysis
     updateProgress(1, 100)
   }
@@ -88,22 +90,22 @@ export async function generateStoryboard(
   updateProgress(3, 0)
   let totalShots = 0
   scenes.forEach((scene) => {
-    totalShots += scene.shots.length 
+    totalShots += scene.shots.length
   })
 
   let processedShots = 0
 
-  //Update shots with prompts
+  // Update shots with prompts
   const scenesWithPrompts = scenes.map((scene) => {
     const shotsWithPrompts = scene.shots.map((shot) => {
-      //Generate prompt for this shot
-      const prompt = promptEngine.generatePrompt(shot, styleSettings, "text")
+      // Generate prompt for this shot
+      const prompt = promptEngine.generatePrompt(shot, styleSettings, "fal")
       processedShots++
       updateProgress(3, (processedShots / totalShots) * 100)
 
       return {
         ...shot,
-        prompt
+        prompt,
       }
     })
 
@@ -111,15 +113,48 @@ export async function generateStoryboard(
       ...scene,
       shots: shotsWithPrompts,
     }
+  })
 
+  // Step 4: Generate images for each shot (sequentially)
+  updateProgress(4, 0)
+  processedShots = 0
+
+  // Process scenes sequentially
+  const scenesWithImages = []
+  for (const scene of scenesWithPrompts) {
+    // Process shots sequentially
+    const shotsWithImages = []
+    for (const shot of scene.shots) {
+      // Generate image for this shot
+      const imageUrl = await imageService.generateImage({
+        prompt: shot.prompt || "",
+        negativePrompt: promptEngine.generateNegativePrompt(styleSettings),
+        width: getWidthForAspectRatio(styleSettings.aspectRatio),
+        height: getHeightForAspectRatio(styleSettings.aspectRatio),
+        steps: getStepsForQuality(styleSettings.quality),
+      })
+
+      processedShots++
+      updateProgress(4, (processedShots / totalShots) * 100)
+
+      shotsWithImages.push({
+        ...shot,
+        imageUrl,
+      })
+    }
+
+    scenesWithImages.push({
+      ...scene,
+      shots: shotsWithImages,
     })
+  }
 
   // Step 5: Assemble the storyboard
   updateProgress(5, 0)
 
   // Create storyboard data
-   const storyboardData: StoryboardData = {
-     id: uuidv4(),
+  const storyboardData: StoryboardData = {
+    id: uuidv4(),
     title,
     author: "AI Storyboard Generator",
     director: "User",
@@ -127,16 +162,15 @@ export async function generateStoryboard(
     version: "1.0",
     style: styleSettings.visualStyle,
     aspectRatio: styleSettings.aspectRatio,
-    scenes: scenesWithPrompts,
-    annotations: [] // Initialize annotations array
-
-  } 
+    scenes: scenesWithImages,
+    annotations: [], // Initialize annotations array
+  }
 
   updateProgress(5, 100)
 
   return storyboardData
 }
- 
+
 /**
  * Basic story analysis function (used when Gemini Pro is not available)
  * @param storyText Story text to analyze
@@ -249,7 +283,7 @@ async function analyzeStoryBasic(storyText: string): Promise<any> {
   }
 }
 
-/*
+/**
  * Generate a title from story text
  * @param storyText Story text
  * @returns Generated title
@@ -260,4 +294,66 @@ function generateTitle(storyText: string): string {
   const words = storyText.split(" ")
   const titleWords = words.slice(0, Math.min(5, words.length))
   return titleWords.join(" ") + (titleWords.length < words.length ? "..." : "")
+}
+
+/**
+ * Get width for aspect ratio
+ * @param aspectRatio Aspect ratio
+ * @returns Width in pixels
+ */
+function getWidthForAspectRatio(aspectRatio: string): number {
+  switch (aspectRatio) {
+    case "16:9":
+      return 1024
+    case "4:3":
+      return 1024
+    case "1:1":
+      return 1024
+    case "2.35:1":
+      return 1024
+    case "9:16":
+      return 576
+    default:
+      return 1024
+  }
+}
+
+/**
+ * Get height for aspect ratio
+ * @param aspectRatio Aspect ratio
+ * @returns Height in pixels
+ */
+function getHeightForAspectRatio(aspectRatio: string): number {
+  switch (aspectRatio) {
+    case "16:9":
+      return 576
+    case "4:3":
+      return 768
+    case "1:1":
+      return 1024
+    case "2.35:1":
+      return 436
+    case "9:16":
+      return 1024
+    default:
+      return 768
+  }
+}
+
+/**
+ * Get steps for quality
+ * @param quality Quality setting
+ * @returns Number of steps
+ */
+function getStepsForQuality(quality: string): number {
+  switch (quality) {
+    case "high":
+      return 50
+    case "standard":
+      return 30
+    case "draft":
+      return 15
+    default:
+      return 30
+  }
 }
